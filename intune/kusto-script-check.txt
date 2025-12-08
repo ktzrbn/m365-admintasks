@@ -1,0 +1,6 @@
+DeviceEvents
+| where DeviceName == "LIB-9H9YY64"
+| where ActionType contains "Script" or FileName contains "powershell.exe" or FileName contains "AgentExecutor.exe"
+| where Timestamp > ago(7d)
+| project Timestamp, ActionType, FileName, FolderPath, SHA256, AccountName
+| order by Timestamp desc
