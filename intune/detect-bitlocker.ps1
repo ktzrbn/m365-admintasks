@@ -5,31 +5,39 @@ $regPath = "HKLM:\Software\Policies\Microsoft\FVE"
 $needsRemediation = $false
 $issues = @()
 
-# Check if blocking registry key exists
-if (Test-Path $regPath) {
-    $needsRemediation = $true
-    $issues += "Blocking registry key exists"
-}
-
-# Check BitLocker status
+# Priority 1: Check BitLocker status first
 try {
     $bitlocker = Get-BitLockerVolume -MountPoint 'C:' -ErrorAction Stop
     
-    if ($bitlocker.ProtectionStatus -ne 'On') {
+    if ($bitlocker.ProtectionStatus -eq 'On') {
+        # BitLocker is enabled - check if recovery key exists
+        $recoveryKey = $bitlocker.KeyProtector | Where-Object { $_.KeyProtectorType -eq 'RecoveryPassword' }
+        if ($recoveryKey) {
+            # All good - BitLocker enabled with recovery key
+            Write-Output "Compliant: BitLocker enabled with recovery key"
+            exit 0
+        } else {
+            $needsRemediation = $true
+            $issues += "BitLocker enabled but no recovery key found"
+        }
+    } else {
+        # BitLocker not enabled - check if blocking registry key is preventing it
         $needsRemediation = $true
         $issues += "BitLocker not enabled"
-    }
-    
-    # Check if recovery key exists
-    $recoveryKey = $bitlocker.KeyProtector | Where-Object { $_.KeyProtectorType -eq 'RecoveryPassword' }
-    if (-not $recoveryKey -and $bitlocker.ProtectionStatus -eq 'On') {
-        $needsRemediation = $true
-        $issues += "No recovery key found"
+        
+        if (Test-Path $regPath) {
+            $issues += "Blocking registry key exists (must be removed first)"
+        }
     }
     
 } catch {
     $needsRemediation = $true
     $issues += "BitLocker not available or error: $($_.Exception.Message)"
+    
+    # Still check registry if BitLocker check failed
+    if (Test-Path $regPath) {
+        $issues += "Blocking registry key exists"
+    }
 }
 
 # Output results
